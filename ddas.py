@@ -14,20 +14,53 @@ def create_dda_grid(
     crop=None,
 ):
     """
-    Creates a composite image grid from two or three lists of image file paths.
+    Create a labeled grid image from multiple lists of image files.
 
-    Parameters:
-    - image_lists - list of lists of images
-    - row_labels: List of strain labels.
-    - col_labels: List of column labels.
-    - out_file: String, path to save the output PNG.
-    - padding: Integer, space between images.
-    - bg_color: Tuple, background color in (R, G, B).
-    - font_size: Integer, size of the font for labels.
-    - transpose: Bool, if True swap rows/cols of image_lists and labels.
-    - crop: Optional int. If set, crop each image to a square of size crop×crop
-            centered on the image center before further processing.
+    Each inner list in ``image_lists`` represents a column in the grid and
+    contains images corresponding to the entries in ``row_labels``. Images are
+    resized within each row so that all images in that row share the smallest
+    height, preserving aspect ratio. Optional center cropping can be applied
+    prior to resizing. Row and column labels are rendered along the left and
+    top margins, respectively.
+
+    Parameters
+    ----------
+    image_lists : list of list of str
+        Nested list of image file paths. Each inner list corresponds to a
+        column, and each element corresponds to a row. Entries may be ``None``
+        to leave a cell empty.
+    row_labels : list of str
+        Labels displayed along the left side of the grid.
+    col_labels : list of str
+        Labels displayed along the top of the grid.
+    out_file : str
+        Path to the output image file.
+    padding : int, default=10
+        Number of pixels used as spacing between images and between grid
+        elements.
+    bg_color : tuple of int, default=(255, 255, 255)
+        Background color of the canvas in ``(R, G, B)`` format.
+    font_size : int, default=20
+        Font size used when rendering row and column labels.
+    transpose : bool, default=False
+        If ``True``, transpose the grid by swapping rows and columns of
+        ``image_lists`` and exchanging ``row_labels`` and ``col_labels``.
+    crop : int or None, default=None
+        If provided, each image is center-cropped to a square of size
+        ``crop × crop`` pixels before resizing and placement.
+
+    Returns
+    -------
+    None
+        The resulting grid image is written to ``out_file``.
+
+    Notes
+    -----
+    Images are aligned within their column cells and centered horizontally
+    relative to the maximum width of that column. Rows share a uniform height
+    determined by the tallest image within the row after resizing.
     """
+
 
     if transpose:
         image_lists = [list(x) for x in zip(*image_lists)]
@@ -151,15 +184,78 @@ def create_dda_grid(
 def create_stacked_image(
     input_files1, input_files2, labels, height, out_file,
     sep_size=3, sep_color=(0, 0, 0),
-    max_slice_width=None, max_radius=50, max_dev_from_center=100,
+    max_slice_width=None,
     kind='stacked',
     orientation='vertical',
     horizontal_label_rotation=None,
     layout_order=('labels', 'files1', 'files2'),
     font_size=12,
-    min_thresh_intensity=200,
+
+    # Disk detection parameters
+    max_radius=50, max_dev_from_center=100, min_thresh_intensity=230,
 ):
-    from PIL import Image, ImageDraw, ImageFont
+    """
+    Construct a composite image from paired input images with optional labels.
+
+    The function extracts vertically centered slices from paired images,
+    aligns them based on automatically detected disk centers, and arranges
+    them either stacked or opposite each other. Labels corresponding to each
+    image pair are rendered alongside or above the slices depending on the
+    chosen orientation.
+
+    Parameters
+    ----------
+    input_files1 : list of str
+        File paths for the first image in each pair.
+    input_files2 : list of str
+        File paths for the second image in each pair.
+    labels : list of str
+        Labels corresponding to each pair of images.
+    height : int
+        Height in pixels of the vertical slice extracted from each image.
+    out_file : str
+        Path to the output image file.
+    sep_size : int, default=3
+        Thickness in pixels of separator lines drawn between slices or
+        sections.
+    sep_color : tuple of int, default=(0, 0, 0)
+        Color of separator lines in ``(R, G, B)`` format.
+    max_slice_width : int or None, default=None
+        Maximum width of the cropped slice centered on the detected disk.
+        If ``None``, the full image width is used before halving.
+    kind : {'stacked', 'opposite'}, default='stacked'
+        Layout mode. ``'stacked'`` places slices sequentially for each pair,
+        while ``'opposite'`` positions slices from the two files side-by-side
+        or above/below one another depending on orientation.
+    orientation : {'vertical', 'horizontal'}, default='vertical'
+        Orientation of the overall layout.
+    horizontal_label_rotation : {None, 'left', 'right'}, default=None
+        Optional rotation applied to labels when ``orientation='horizontal'``.
+    layout_order : tuple of {'labels', 'files1', 'files2'}, default=('labels', 'files1', 'files2')
+        Ordering of layout elements when ``kind='opposite'``. Determines how
+        labels and slices are arranged in rows or columns.
+    font_size : int, default=12
+        Font size used for label rendering.
+    max_radius : int, default=50
+        Maximum radius of the detected disk used for alignment.
+    max_dev_from_center : int, default=100
+        Maximum allowed deviation in pixels of the detected disk center from
+        the image center.
+    min_thresh_intensity : int, default=230
+        Threshold intensity used when detecting the disk center.
+
+    Returns
+    -------
+    None
+        The resulting composite image is written to ``out_file``.
+
+    Notes
+    -----
+    Disk centers are detected using :func:`find_dda_disk`, and slices are
+    horizontally aligned using offsets derived from these centers. Each slice
+    is optionally restricted to the left half after cropping to emphasize the
+    region of interest.
+    """
 
     assert len(input_files1) == len(input_files2) == len(labels)
     assert kind in ('stacked', 'opposite')
@@ -387,24 +483,149 @@ def create_stacked_image(
 # -------------------------------
 # Helpers
 # -------------------------------
+# TODO: these functions can probably be in-lined into the main function.
 def slice_image_by_center(image, width, center_x):
+    """
+    Extract a horizontal slice centered at a specified x-coordinate.
+
+    Parameters
+    ----------
+    image : PIL.Image.Image
+        Input image to be cropped.
+    width : int
+        Width of the slice to extract.
+    center_x : int
+        Horizontal coordinate representing the center of the slice.
+
+    Returns
+    -------
+    PIL.Image.Image
+        Cropped image containing the requested horizontal slice.
+
+    Notes
+    -----
+    The crop bounds are clamped to the image boundaries to avoid indexing
+    outside the image.
+    """
+
     half = width // 2
     return image.crop((max(0, center_x - half), 0,
                        min(image.width, center_x + half), image.height))
 
 def keep_left_half(image):
+    """
+    Return the left half of an image.
+
+    Parameters
+    ----------
+    image : PIL.Image.Image
+        Input image.
+
+    Returns
+    -------
+    PIL.Image.Image
+        Cropped image containing only the left half of the input.
+    """
     return image.crop((0, 0, image.width // 2, image.height))
 
 def crop_and_pad(image, top, width, height, x_offset):
+    """
+    Crop a vertical region from an image and apply horizontal padding on the
+    left side.
+
+    Parameters
+    ----------
+    image : PIL.Image.Image
+        Input image.
+    top : int
+        Top pixel coordinate of the crop region.
+    width : int
+        Width of the region to crop (unused but preserved for API
+        compatibility).
+    height : int
+        Height of the cropped region.
+    x_offset : int
+        Horizontal offset used when padding the cropped image.
+
+    Returns
+    -------
+    PIL.Image.Image
+        Cropped image padded horizontally according to ``x_offset``.
+    """
+
     return pad_image_with_x_offset(image.crop((0, top, image.width, top + height)), x_offset)
 
 def pad_image_with_x_offset(image, x_offset):
+    """
+    Pad an image horizontally by shifting it within a larger (white) canvas,
+    effectively padding it with white on its left side.
+
+    Parameters
+    ----------
+    image : PIL.Image.Image
+        Input image.
+    x_offset : int
+        Horizontal offset applied when pasting the image into the padded
+        canvas. Positive values shift the image to the right.
+
+    Returns
+    -------
+    PIL.Image.Image
+        New image containing the original image placed within a padded
+        background.
+    """
     w, h = image.size
     new = Image.new("RGB", (w + abs(x_offset), h), "white")
     new.paste(image, (x_offset, 0))
     return new
 
-def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50, debug=False, min_thresh_intensity=200):
+def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50, debug=False, min_thresh_intensity=230):
+    """
+    Detect a circular disk feature near the center of an image.
+
+    The function thresholds the grayscale version of the image to identify
+    bright regions, restricts contour detection to a square region around the
+    image center, and selects the largest circular contour whose radius and
+    position satisfy the specified constraints.
+
+    Parameters
+    ----------
+    in_file : str
+        Path to the input image file.
+    out_file : str or None, default=None
+        If provided, a diagnostic image showing the detected disk (and
+        optional debugging overlays) is saved to this path.
+    max_radius : int, default=50
+        Maximum allowed radius for the detected disk.
+    max_dev_from_center : int, default=50
+        Maximum allowed deviation in pixels between the disk center and the
+        image center in both x and y directions.
+    debug : bool, default=False
+        If ``True``, additional diagnostic overlays and intermediate images
+        are generated.
+    min_thresh_intensity : int, default=230
+        Intensity threshold used to binarize the grayscale image before
+        contour detection.
+
+    Returns
+    -------
+    best_center : tuple of int
+        Coordinates ``(x, y)`` of the detected disk center.
+    best_radius : int
+        Radius of the detected disk.
+
+    Raises
+    ------
+    ValueError
+        If no valid disk satisfying the constraints is detected.
+
+    Notes
+    -----
+    Images are loaded with Pillow and converted to NumPy arrays for processing
+    with OpenCV. Contour detection is restricted to a square region around the
+    image center defined by ``max_radius + max_dev_from_center`` to reduce
+    spurious detections.
+    """
     # pil_image = Image.open(in_file)
     # print(pil_image.getexif().get(274)) 
 
