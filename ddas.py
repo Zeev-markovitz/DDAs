@@ -586,8 +586,7 @@ def clear_dda_disk_cache():
     global _DDA_DISK_CACHE
     _DDA_DISK_CACHE.clear()
 
-# TODO: refactor the out_file/debug logic, perhaps to use a single output folder instead of these two parameters.
-def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50, debug=False, min_thresh_intensity=230):
+def find_dda_disk(in_file, max_radius=50, max_dev_from_center=50, min_thresh_intensity=230, debug_folder=None):
     """
     Detect a circular disk feature near the center of an image.
 
@@ -600,20 +599,17 @@ def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50,
     ----------
     in_file : str
         Path to the input image file.
-    out_file : str or None, default=None
-        If provided, a diagnostic image showing the detected disk (and
-        optional debugging overlays) is saved to this path.
     max_radius : int, default=50
         Maximum allowed radius for the detected disk.
     max_dev_from_center : int, default=50
         Maximum allowed deviation in pixels between the disk center and the
         image center in both x and y directions.
-    debug : bool, default=False
-        If ``True``, additional diagnostic overlays and intermediate images
-        are generated.
     min_thresh_intensity : int, default=230
         Intensity threshold used to binarize the grayscale image before
         contour detection.
+    debug_folder : str or None, default=None
+        If provided, diagnostic images will be saved to this folder for debugging
+        purposes.
 
     Returns
     -------
@@ -639,7 +635,7 @@ def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50,
 
     key = (in_file, max_radius, max_dev_from_center, min_thresh_intensity)
 
-    if key in _DDA_DISK_CACHE and not debug and not in_file:
+    if key in _DDA_DISK_CACHE and not debug_folder:
         return _DDA_DISK_CACHE[key]
 
     # pil_image = Image.open(in_file)
@@ -690,12 +686,6 @@ def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50,
     contours, _ = cv2.findContours(
         thresh_inner, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
     )
-
-    if debug:
-        cv2.imwrite('/tmp/debug_gray.png', gray)
-        cv2.imwrite('/tmp/debug_thresh.png', thresh)
-        cv2.imwrite('/tmp/debug_thresh_inner.png', thresh_inner)
-
     # Find the largest circular contour
     best_center, best_radius = None, 0
 
@@ -715,91 +705,60 @@ def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50,
             if radius > best_radius:
                 best_center, best_radius = center, radius
 
-    # Draw and save the marked image if out_file is provided
-    if out_file:
+    if debug_folder:
+        prefix = Path(in_file).stem
         pil_image = Image.open(in_file)
         draw = ImageDraw.Draw(pil_image)
 
-        if debug:
-            # Draw all contours in red
-            for cnt in contours:
-                cnt = cnt + [x0, y0]
-                (x, y), radius = cv2.minEnclosingCircle(cnt)
-                center = (int(x), int(y))
-                radius = int(radius)
-                draw.ellipse(
-                    (
-                        center[0] - radius,
-                        center[1] - radius,
-                        center[0] + radius,
-                        center[1] + radius,
-                    ),
-                    outline="red",
-                    width=1,
-                )
+        cv2.imwrite(f'{debug_folder}/{prefix}_gray.png', gray)
+        cv2.imwrite(f'{debug_folder}/{prefix}_thresh.png', thresh)
+        cv2.imwrite(f'{debug_folder}/{prefix}_thresh_inner.png', thresh_inner)
 
-            # Draw max_radius
+        # Draw all contours in red
+        for cnt in contours:
+            cnt = cnt + [x0, y0]
+            (x, y), radius = cv2.minEnclosingCircle(cnt)
+            center = (int(x), int(y))
+            radius = int(radius)
             draw.ellipse(
                 (
-                    image_center[0] - max_radius,
-                    image_center[1] - max_radius,
-                    image_center[0] + max_radius,
-                    image_center[1] + max_radius,
+                    center[0] - radius,
+                    center[1] - radius,
+                    center[0] + radius,
+                    center[1] + radius,
                 ),
-                outline="blue",
+                outline="red",
                 width=1,
             )
 
-            # Draw max_dev_from_center square
-            draw.rectangle(
-                (
-                    image_center[0] - max_dev_from_center,
-                    image_center[1] - max_dev_from_center,
-                    image_center[0] + max_dev_from_center,
-                    image_center[1] + max_dev_from_center,
-                ),
-                outline="blue",
-                width=1,
-            )
+        # Draw max_radius
+        draw.ellipse(
+            (
+                image_center[0] - max_radius,
+                image_center[1] - max_radius,
+                image_center[0] + max_radius,
+                image_center[1] + max_radius,
+            ),
+            outline="blue",
+            width=1,
+        )
 
-            # Draw inner contour search square
-            draw.rectangle((x0, y0, x1, y1), outline="green", width=1)
+        # Draw max_dev_from_center square
+        draw.rectangle(
+            (
+                image_center[0] - max_dev_from_center,
+                image_center[1] - max_dev_from_center,
+                image_center[0] + max_dev_from_center,
+                image_center[1] + max_dev_from_center,
+            ),
+            outline="blue",
+            width=1,
+        )
 
-            if best_center is not None:
-                draw.ellipse(
-                    (
-                        best_center[0] - best_radius,
-                        best_center[1] - best_radius,
-                        best_center[0] + best_radius,
-                        best_center[1] + best_radius,
-                    ),
-                    outline="blue",
-                    width=1,
-                )
+        # Draw inner contour search square
+        draw.rectangle((x0, y0, x1, y1), outline="green", width=1)
 
-            # Draw image center
-            x_size = 10
-            draw.line(
-                (
-                    image_center[0] - x_size,
-                    image_center[1] - x_size,
-                    image_center[0] + x_size,
-                    image_center[1] + x_size,
-                ),
-                fill="blue",
-                width=1,
-            )
-            draw.line(
-                (
-                    image_center[0] - x_size,
-                    image_center[1] + x_size,
-                    image_center[0] + x_size,
-                    image_center[1] - x_size,
-                ),
-                fill="blue",
-                width=1,
-            )
-        else:
+        if best_center is not None:
             draw.ellipse(
                 (
                     best_center[0] - best_radius,
@@ -807,11 +766,34 @@ def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50,
                     best_center[0] + best_radius,
                     best_center[1] + best_radius,
                 ),
-                outline="red",
-                width=3,
+                outline="green",
+                width=1,
             )
 
-        pil_image.save(out_file)
+        # Draw image center
+        x_size = 10
+        draw.line(
+            (
+                image_center[0] - x_size,
+                image_center[1] - x_size,
+                image_center[0] + x_size,
+                image_center[1] + x_size,
+            ),
+            fill="blue",
+            width=1,
+        )
+        draw.line(
+            (
+                image_center[0] - x_size,
+                image_center[1] + x_size,
+                image_center[0] + x_size,
+                image_center[1] - x_size,
+            ),
+            fill="blue",
+            width=1,
+        )
+
+        pil_image.save(f"{debug_folder}/{prefix}_debug.png")
 
     if best_center is None:
         raise ValueError(f"No disk detected in the image: {in_file}")
