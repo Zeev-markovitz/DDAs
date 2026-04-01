@@ -185,7 +185,7 @@ def create_stacked_image(
     input_files1, input_files2, labels, height, out_file,
     sep_size=3, sep_color=(0, 0, 0),
     max_slice_width=None,
-    kind='stacked',
+    layout='stacked',
     orientation='vertical',
     horizontal_label_rotation=None,
     layout_order=('labels', 'files1', 'files2'),
@@ -223,7 +223,7 @@ def create_stacked_image(
     max_slice_width : int or None, default=None
         Maximum width of the cropped slice centered on the detected disk.
         If ``None``, the full image width is used before halving.
-    kind : {'stacked', 'opposite'}, default='stacked'
+    layout : {'stacked', 'opposite'}, default='stacked'
         Layout mode. ``'stacked'`` places slices sequentially for each pair,
         while ``'opposite'`` positions slices from the two files side-by-side
         or above/below one another depending on orientation.
@@ -258,7 +258,7 @@ def create_stacked_image(
     """
 
     assert len(input_files1) == len(input_files2) == len(labels)
-    assert kind in ('stacked', 'opposite')
+    assert layout in ('stacked', 'opposite')
     assert orientation in ('vertical', 'horizontal')
     assert horizontal_label_rotation in (None, 'left', 'right')
     assert set(layout_order) == {'labels', 'files1', 'files2'}
@@ -318,7 +318,7 @@ def create_stacked_image(
     # Canvas sizing
     # -------------------------------
     if orientation == 'vertical':
-        if kind == 'stacked':
+        if layout == 'stacked':
             # Each pair: slice1 + sep + slice2
             final_height = n * (2 * height + sep_size) + (n - 1) * sep_size
             final_width = left_margin + sep_size + display_width
@@ -327,7 +327,7 @@ def create_stacked_image(
             final_width = sum(col_widths[k] for k in layout_order) + sep_size * (len(layout_order) - 1)
             final_height = n * height + (n - 1) * sep_size
     else:
-        if kind == 'stacked':
+        if layout == 'stacked':
             final_width = n * (2 * height + sep_size) + (n - 1) * sep_size
             final_height = display_width + label_band_height
         else:
@@ -360,7 +360,7 @@ def create_stacked_image(
         # -------------------------------
         # STACKED VERTICAL
         # -------------------------------
-        if kind == 'stacked' and orientation == 'vertical':
+        if layout == 'stacked' and orientation == 'vertical':
             # vertical separator between label and slices
             draw.rectangle([(left_margin, 0), (left_margin + sep_size, final_height)], fill=sep_color)
 
@@ -393,7 +393,7 @@ def create_stacked_image(
         # -------------------------------
         # STACKED HORIZONTAL
         # -------------------------------
-        elif kind == 'stacked' and orientation == 'horizontal':
+        elif layout == 'stacked' and orientation == 'horizontal':
             c1r = c1.rotate(90, expand=True)
             c2r = c2.rotate(90, expand=True)
             pair_left = x_offset_pos
