@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 import numpy as np
 import cv2
+from pathlib import Path
 
 def create_dda_grid(
     image_lists,
@@ -191,6 +192,8 @@ def create_stacked_image(
     layout_order=('labels', 'files1', 'files2'),
     font_size=12,
 
+    rads=None,
+
     # Disk detection parameters
     max_radius=50, max_dev_from_center=100, min_thresh_intensity=230,
 ):
@@ -299,16 +302,17 @@ def create_stacked_image(
     # -------------------------------
     sample = Image.open(input_files1[0])
     img_width, _ = sample.size
-    centers_x, centers_y = [], []
+    centers_x, centers_y, radii = [], [], []
     for f1, f2 in zip(input_files1, input_files2):
-        (cx1, cy1), _ = find_dda_disk(f1, max_radius=max_radius,
-                                     max_dev_from_center=max_dev_from_center,
-                                     min_thresh_intensity=min_thresh_intensity)
-        (cx2, cy2), _ = find_dda_disk(f2, max_radius=max_radius,
+        (cx1, cy1), r1 = find_dda_disk(f1, max_radius=max_radius,
+                                      max_dev_from_center=max_dev_from_center,
+                                      min_thresh_intensity=min_thresh_intensity)
+        (cx2, cy2), r2 = find_dda_disk(f2, max_radius=max_radius,
                                      max_dev_from_center=max_dev_from_center,
                                      min_thresh_intensity=min_thresh_intensity)
         centers_x.extend([cx1, cx2])
         centers_y.extend([cy1, cy2])
+        radii.extend([r1, r2])
     x_offsets = [0] + [centers_x[0] - cx for cx in centers_x[1:]]
     display_width = (max_slice_width if max_slice_width else img_width) // 2
     left_margin = 100
@@ -346,6 +350,18 @@ def create_stacked_image(
         img2 = Image.open(f2)
         cx1, cy1 = centers_x[2*i], centers_y[2*i]
         cx2, cy2 = centers_x[2*i+1], centers_y[2*i+1]
+        
+        if rads:
+            r1, r2 = radii[2*i], radii[2*i+1]
+
+            intensities, _ = plot_pixel_intensities_from_plate(img1, (cx1, cy1), r1, 500)
+            rads_ = get_rads_from_pixels(intensities, rads)
+            img1 = draw_circles(Image.open(f1), (cx1, cy1), [r+r1 for r in rads_], line_width=1)
+
+            intensities, _ = plot_pixel_intensities_from_plate(img2, (cx2, cy2), r2, 500)
+            rads_ = get_rads_from_pixels(intensities, rads)
+            img2 = draw_circles(Image.open(f2), (cx2, cy2), [r+r2 for r in rads_], line_width=1)
+
         top1 = max(0, cy1 - height // 2)
         top2 = max(0, cy2 - height // 2)
         c1 = crop_and_pad(img1, top1, img_width, height, x_offsets[2*i])
@@ -800,3 +816,157 @@ def find_dda_disk(in_file, max_radius=50, max_dev_from_center=50, min_thresh_int
 
     _DDA_DISK_CACHE[key] = (best_center, best_radius)
     return best_center, best_radius
+
+def plot_pixel_intensities_from_plate(img, center, start_radius, max_length, plot=False, out_file=None, debug=False):
+    """
+    Computes the average pixel intensity in concentric circles from a given center in the image
+    and plots the intensities as a scatter plot.
+    
+    Parameters:
+    - img: A PIL Image object.
+    - center: Tuple (cx, cy) representing the center of the concentric circles.
+    - start_radius: Integer, radius from which to start measuring intensity.
+    - max_length: Integer, width and height of the cropped square around the center.
+    - out_file: String, path to save the output PNG file.
+    
+    Returns:
+    - A tuple (intensities, fig), where:
+      - intensities is a NumPy array of average pixel intensities per radius.
+      - fig is the matplotlib figure object.
+    """
+    cx, cy = center
+    half_length = max_length // 2
+    img_cropped = img.crop((cx - half_length, cy - half_length, cx + half_length, cy + half_length))
+    img_gray = img_cropped.convert("L")
+    img_array = np.array(img_gray)
+    
+    max_radius = min(half_length, half_length)
+    intensities = []
+    
+    for r in range(start_radius, max_radius):
+        y, x = np.ogrid[:max_length, :max_length]
+        mask = ((x - half_length) ** 2 + (y - half_length) ** 2 >= r ** 2) & ((x - half_length) ** 2 + (y - half_length) ** 2 < (r + 1) ** 2)
+        pixel_values = img_array[mask]
+        if pixel_values.size > 0:
+            intensities.append(np.mean(pixel_values))
+            # intensities.append(np.median(pixel_values))
+        else:
+            intensities.append(0)
+
+        if debug:
+            apply_mask_to_image(img_cropped, mask, f"/tmp/debug/{r}.png")
+    
+    # Create scatter plot
+    fig = None
+    if plot:
+        fig, ax = plt.subplots(figsize=(8, 4))
+        ax.scatter(range(start_radius, start_radius + len(intensities)), intensities, s=5, color='black')
+        ax.set_xlabel("Radius (pixels)")
+        ax.set_ylabel("Average Intensity")
+        ax.set_title("Pixel Intensity Profile from Plate Center")
+        
+        # Save the plot
+        if out_file is not None:
+            fig.savefig(out_file, dpi=300)
+        plt.close(fig)
+    
+    return np.array(intensities), fig
+
+def get_rads_from_pixels(
+    pixels, thresholds=(0.2, 0.5, 0.8)
+):
+    pixels = np.array(pixels) # Copy to avoid modifying the original
+
+    # The disk detection can be somewhat wrong and the first few pixels can be of high intesnity.
+    # We solve this by nullifying the first pixels until the minimum value.
+    pixels[:(pixels > pixels.min()).argmin()] = pixels.min()
+
+    pixels = pixels - pixels.min()
+    max_y = np.median(np.sort(pixels)[-50:])
+
+    result = []
+    for t in thresholds: # Percent inhibition
+        t_y = max_y * (1-t) # 1-t because at, e.g., 20% inhibition we'll be looking for the first (100%-20%=80%) intensity.
+        x = (pixels >= t_y).argmax()
+        result.append(x)
+
+    return result
+
+def plot_pixel_intensities(
+    intensities, rads=None, ax=None, out_file=None
+):
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4))
+    else:
+        fig = None
+    ax.scatter(range(len(intensities)), intensities, s=5, color='black')
+
+    if rads is not None:
+        for r in rads:
+            ax.axvline(r, color='red', linestyle='--')
+
+    ax.set_xlabel("Radius (pixels)")
+    ax.set_ylabel("Average Intensity")
+    ax.set_title("Pixel Intensity Profile from Plate Center")
+    
+    # Save the plot
+    if out_file is not None:
+        fig.savefig(out_file, dpi=300)
+    plt.close(fig)
+
+    return fig, ax
+
+def draw_circles(
+    in_image: Image.Image,
+    center: tuple[float, float],
+    radii: list[float],
+    line_width: int = 2,
+    circle_color="red",
+) -> Image.Image:
+    """
+    Draw concentric circles on a copy of a PIL image.
+
+    Parameters
+    ----------
+    in_image : PIL.Image.Image
+        Input image.
+    center : (x, y)
+        Circle center in pixel coordinates.
+    radii : list of float
+        Radii of circles to draw (in pixels).
+    line_width : int, default=2
+        Width of the circle outlines.
+    circle_color : color spec, default="red"
+        Any PIL-compatible color (e.g., "red", (255, 0, 0), "#FF0000").
+
+    Returns
+    -------
+    PIL.Image.Image
+        A copy of the image with circles drawn.
+    """
+    if not radii:
+        return in_image.copy()
+
+    cx, cy = center
+    out = in_image.copy()
+    draw = ImageDraw.Draw(out)
+
+    for r in radii:
+        if r <= 0:
+            continue
+
+        # Bounding box for the circle
+        bbox = [
+            cx - r,
+            cy - r,
+            cx + r,
+            cy + r,
+        ]
+
+        draw.ellipse(
+            bbox,
+            outline=circle_color,
+            width=line_width,
+        )
+
+    return out
