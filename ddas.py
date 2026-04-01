@@ -579,6 +579,14 @@ def pad_image_with_x_offset(image, x_offset):
     new.paste(image, (x_offset, 0))
     return new
 
+_DDA_DISK_CACHE = {}
+
+def clear_dda_disk_cache():
+    """Clear the DDA disk detection cache."""
+    global _DDA_DISK_CACHE
+    _DDA_DISK_CACHE.clear()
+
+# TODO: refactor the out_file/debug logic, perhaps to use a single output folder instead of these two parameters.
 def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50, debug=False, min_thresh_intensity=230):
     """
     Detect a circular disk feature near the center of an image.
@@ -626,6 +634,14 @@ def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50,
     image center defined by ``max_radius + max_dev_from_center`` to reduce
     spurious detections.
     """
+
+    in_file = str(Path(in_file).expanduser().resolve())
+
+    key = (in_file, max_radius, max_dev_from_center, min_thresh_intensity)
+
+    if key in _DDA_DISK_CACHE and not debug and not in_file:
+        return _DDA_DISK_CACHE[key]
+
     # pil_image = Image.open(in_file)
     # print(pil_image.getexif().get(274)) 
 
@@ -800,4 +816,5 @@ def find_dda_disk(in_file, out_file=None, max_radius=50, max_dev_from_center=50,
     if best_center is None:
         raise ValueError(f"No disk detected in the image: {in_file}")
 
+    _DDA_DISK_CACHE[key] = (best_center, best_radius)
     return best_center, best_radius
