@@ -1,19 +1,20 @@
+from typing import List, Optional, Tuple, Union, Sequence
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 import numpy as np
 import cv2
 from pathlib import Path
 
 def create_dda_grid(
-    image_lists,
-    row_labels,
-    col_labels,
-    out_file,
-    padding=10,
-    bg_color=(255, 255, 255),
-    font_size=20,
-    transpose=False,
-    crop=None,
-):
+    image_lists: List[List[Union[str, Path]]],
+    row_labels: List[str],
+    col_labels: List[str],
+    out_file: Union[str, Path],
+    padding: int = 10,
+    bg_color: Tuple[int, int, int] = (255, 255, 255),
+    font_size: int = 20,
+    transpose: bool = False,
+    crop: Optional[int] = None,
+) -> None:
     """
     Create a labeled grid image from multiple lists of image files.
 
@@ -26,7 +27,7 @@ def create_dda_grid(
 
     Parameters
     ----------
-    image_lists : list of list of str
+    image_lists : list of list of (str | Path)
         Nested list of image file paths. Each inner list corresponds to a
         column, and each element corresponds to a row. Entries may be ``None``
         to leave a cell empty.
@@ -34,34 +35,25 @@ def create_dda_grid(
         Labels displayed along the left side of the grid.
     col_labels : list of str
         Labels displayed along the top of the grid.
-    out_file : str
+    out_file : str or Path
         Path to the output image file.
     padding : int, default=10
-        Number of pixels used as spacing between images and between grid
-        elements.
+        Number of pixels used as spacing between images and grid elements.
     bg_color : tuple of int, default=(255, 255, 255)
-        Background color of the canvas in ``(R, G, B)`` format.
+        Background color in ``(R, G, B)`` format.
     font_size : int, default=20
-        Font size used when rendering row and column labels.
+        Font size for rendering labels.
     transpose : bool, default=False
-        If ``True``, transpose the grid by swapping rows and columns of
-        ``image_lists`` and exchanging ``row_labels`` and ``col_labels``.
+        If ``True``, transpose the grid (swap rows/columns and labels).
     crop : int or None, default=None
-        If provided, each image is center-cropped to a square of size
-        ``crop × crop`` pixels before resizing and placement.
+        If provided, images are center-cropped to ``crop × crop`` pixels
+        before resizing.
 
     Returns
     -------
     None
         The resulting grid image is written to ``out_file``.
-
-    Notes
-    -----
-    Images are aligned within their column cells and centered horizontally
-    relative to the maximum width of that column. Rows share a uniform height
-    determined by the tallest image within the row after resizing.
     """
-
 
     if transpose:
         image_lists = [list(x) for x in zip(*image_lists)]
@@ -183,20 +175,24 @@ def create_dda_grid(
     grid_img.save(out_file)
 
 def create_stacked_image(
-    input_files1, input_files2, labels, height, out_file,
-    sep_size=3, sep_color=(0, 0, 0),
-    max_slice_width=None,
-    layout='stacked',
-    orientation='vertical',
-    horizontal_label_rotation=None,
-    layout_order=('labels', 'files1', 'files2'),
-    font_size=12,
-
-    rads=None,
-
-    # Disk detection parameters
-    max_radius=50, max_dev_from_center=100, min_thresh_intensity=230,
-):
+    input_files1: List[Union[str, Path]],
+    input_files2: List[Union[str, Path]],
+    labels: List[str],
+    height: int,
+    out_file: Union[str, Path],
+    sep_size: int = 3,
+    sep_color: Tuple[int, int, int] = (0, 0, 0),
+    max_slice_width: Optional[int] = None,
+    layout: str = 'stacked',
+    orientation: str = 'vertical',
+    horizontal_label_rotation: Optional[str] = None,
+    layout_order: Tuple[str, str, str] = ('labels', 'files1', 'files2'),
+    font_size: int = 12,
+    rads: Optional[Sequence[float]] = None,
+    max_radius: int = 50,
+    max_dev_from_center: int = 100,
+    min_thresh_intensity: int = 230,
+) -> None:
     """
     Construct a composite image from paired input images with optional labels.
 
@@ -208,56 +204,53 @@ def create_stacked_image(
 
     Parameters
     ----------
-    input_files1 : list of str
-        File paths for the first image in each pair.
-    input_files2 : list of str
-        File paths for the second image in each pair.
+    input_files1, input_files2 : list of str or Path
+        File paths for paired images.
     labels : list of str
-        Labels corresponding to each pair of images.
+        Labels corresponding to each image pair.
     height : int
-        Height in pixels of the vertical slice extracted from each image.
-    out_file : str
+        Height (in pixels) of the extracted slice (the size across the disk).
+    out_file : str or Path
         Path to the output image file.
     sep_size : int, default=3
-        Thickness in pixels of separator lines drawn between slices or
-        sections.
+        Thickness of separator lines in pixels.
     sep_color : tuple of int, default=(0, 0, 0)
-        Color of separator lines in ``(R, G, B)`` format.
+        Separator color in ``(R, G, B)`` format.
     max_slice_width : int or None, default=None
-        Maximum width of the cropped slice centered on the detected disk.
+        Maximum length (in pixels) of cropped slices from the disk to the plate edge.
         If ``None``, the full image width is used before halving.
     layout : {'stacked', 'opposite'}, default='stacked'
         Layout mode. ``'stacked'`` places slices sequentially for each pair,
         while ``'opposite'`` positions slices from the two files side-by-side
         or above/below one another depending on orientation.
     orientation : {'vertical', 'horizontal'}, default='vertical'
-        Orientation of the overall layout.
+        Orientation of the entire figure.
     horizontal_label_rotation : {None, 'left', 'right'}, default=None
-        Optional rotation applied to labels when ``orientation='horizontal'``.
-    layout_order : tuple of {'labels', 'files1', 'files2'}, default=('labels', 'files1', 'files2')
-        Ordering of layout elements when ``kind='opposite'``. Determines how
-        labels and slices are arranged in rows or columns.
+        Rotation applied to labels in horizontal orientation.
+    layout_order : tuple of str, default=('labels', 'files1', 'files2')
+        Ordering of elements when ``layout='opposite'``.
     font_size : int, default=12
-        Font size used for label rendering.
+        Font size for labels.
+    rads : sequence of float or None, default=None
+        Optional inhibition thresholds used to compute and overlay radial
+        annotations on images.
     max_radius : int, default=50
-        Maximum radius of the detected disk used for alignment.
+        Maximum radius used in disk detection.
     max_dev_from_center : int, default=100
-        Maximum allowed deviation in pixels of the detected disk center from
-        the image center.
+        Maximum allowed deviation from image center for disk detection.
     min_thresh_intensity : int, default=230
-        Threshold intensity used when detecting the disk center.
+        Threshold intensity for disk detection.
 
     Returns
     -------
     None
         The resulting composite image is written to ``out_file``.
 
-    Notes
-    -----
-    Disk centers are detected using :func:`find_dda_disk`, and slices are
-    horizontally aligned using offsets derived from these centers. Each slice
-    is optionally restricted to the left half after cropping to emphasize the
-    region of interest.
+    Raises
+    ------
+    AssertionError
+        If input lengths mismatch or invalid layout/orientation parameters
+        are provided.
     """
 
     assert len(input_files1) == len(input_files2) == len(labels)
@@ -500,7 +493,11 @@ def create_stacked_image(
 # Helpers
 # -------------------------------
 # TODO: these functions can probably be in-lined into the main function.
-def slice_image_by_center(image, width, center_x):
+def slice_image_by_center(
+    image: Image.Image,
+    width: int,
+    center_x: int,
+) -> Image.Image:
     """
     Extract a horizontal slice centered at a specified x-coordinate.
 
@@ -511,7 +508,7 @@ def slice_image_by_center(image, width, center_x):
     width : int
         Width of the slice to extract.
     center_x : int
-        Horizontal coordinate representing the center of the slice.
+        Horizontal center coordinate of the slice.
 
     Returns
     -------
@@ -528,7 +525,7 @@ def slice_image_by_center(image, width, center_x):
     return image.crop((max(0, center_x - half), 0,
                        min(image.width, center_x + half), image.height))
 
-def keep_left_half(image):
+def keep_left_half(image: Image.Image) -> Image.Image:
     """
     Return the left half of an image.
 
@@ -540,11 +537,17 @@ def keep_left_half(image):
     Returns
     -------
     PIL.Image.Image
-        Cropped image containing only the left half of the input.
+        Cropped image containing the left half.
     """
     return image.crop((0, 0, image.width // 2, image.height))
 
-def crop_and_pad(image, top, width, height, x_offset):
+def crop_and_pad(
+    image: Image.Image,
+    top: int,
+    width: int,
+    height: int,
+    x_offset: int,
+) -> Image.Image:
     """
     Crop a vertical region from an image and apply horizontal padding on the
     left side.
@@ -554,14 +557,14 @@ def crop_and_pad(image, top, width, height, x_offset):
     image : PIL.Image.Image
         Input image.
     top : int
-        Top pixel coordinate of the crop region.
+        Top coordinate of the crop region.
     width : int
         Width of the region to crop (unused but preserved for API
         compatibility).
     height : int
-        Height of the cropped region.
+        Height of the crop region.
     x_offset : int
-        Horizontal offset used when padding the cropped image.
+        Horizontal offset for padding.
 
     Returns
     -------
@@ -571,7 +574,10 @@ def crop_and_pad(image, top, width, height, x_offset):
 
     return pad_image_with_x_offset(image.crop((0, top, image.width, top + height)), x_offset)
 
-def pad_image_with_x_offset(image, x_offset):
+def pad_image_with_x_offset(
+    image: Image.Image,
+    x_offset: int,
+) -> Image.Image:
     """
     Pad an image horizontally by shifting it within a larger (white) canvas,
     effectively padding it with white on its left side.
@@ -597,12 +603,25 @@ def pad_image_with_x_offset(image, x_offset):
 
 _DDA_DISK_CACHE = {}
 
-def clear_dda_disk_cache():
-    """Clear the DDA disk detection cache."""
+def clear_dda_disk_cache() -> None:
+    """
+    Clear the in-memory cache used by `find_dda_disk`.
+
+    Returns
+    -------
+    None
+    """
+
     global _DDA_DISK_CACHE
     _DDA_DISK_CACHE.clear()
 
-def find_dda_disk(in_file, max_radius=50, max_dev_from_center=50, min_thresh_intensity=230, debug_folder=None):
+def find_dda_disk(
+    in_file: Union[str, Path],
+    max_radius: int = 50,
+    max_dev_from_center: int = 50,
+    min_thresh_intensity: int = 230,
+    debug_folder: Optional[Union[str, Path]] = None,
+) -> Tuple[Tuple[int, int], int]:
     """
     Detect a circular disk feature near the center of an image.
 
@@ -613,26 +632,26 @@ def find_dda_disk(in_file, max_radius=50, max_dev_from_center=50, min_thresh_int
 
     Parameters
     ----------
-    in_file : str
+    in_file : str or Path
         Path to the input image file.
     max_radius : int, default=50
-        Maximum allowed radius for the detected disk.
+        Maximum allowed disk radius.
     max_dev_from_center : int, default=50
         Maximum allowed deviation in pixels between the disk center and the
         image center in both x and y directions.
     min_thresh_intensity : int, default=230
         Intensity threshold used to binarize the grayscale image before
         contour detection.
-    debug_folder : str or None, default=None
-        If provided, diagnostic images will be saved to this folder for debugging
-        purposes.
+    debug_folder : str or Path or None, default=None
+        Optional directory for saving diagnostic outputs.
 
     Returns
     -------
-    best_center : tuple of int
-        Coordinates ``(x, y)`` of the detected disk center.
-    best_radius : int
-        Radius of the detected disk.
+    (center, radius) : tuple
+        center : tuple of int
+            Detected disk center (x, y).
+        radius : int
+            Detected disk radius.
 
     Raises
     ------
@@ -817,23 +836,43 @@ def find_dda_disk(in_file, max_radius=50, max_dev_from_center=50, min_thresh_int
     _DDA_DISK_CACHE[key] = (best_center, best_radius)
     return best_center, best_radius
 
-def plot_pixel_intensities_from_plate(img, center, start_radius, max_length, plot=False, out_file=None, debug=False):
+def plot_pixel_intensities_from_plate(
+    img: Image.Image,
+    center: Tuple[int, int],
+    start_radius: int,
+    max_length: int,
+    plot: bool = False,
+    out_file: Optional[Union[str, Path]] = None,
+    debug: bool = False,
+) -> Tuple[np.ndarray, Optional["matplotlib.figure.Figure"]]:
     """
-    Computes the average pixel intensity in concentric circles from a given center in the image
-    and plots the intensities as a scatter plot.
-    
-    Parameters:
-    - img: A PIL Image object.
-    - center: Tuple (cx, cy) representing the center of the concentric circles.
-    - start_radius: Integer, radius from which to start measuring intensity.
-    - max_length: Integer, width and height of the cropped square around the center.
-    - out_file: String, path to save the output PNG file.
-    
-    Returns:
-    - A tuple (intensities, fig), where:
-      - intensities is a NumPy array of average pixel intensities per radius.
-      - fig is the matplotlib figure object.
+    Compute radial intensity profile from a center point in an image.
+
+    Parameters
+    ----------
+    img : PIL.Image.Image
+        Input image.
+    center : tuple of int
+        Center point (x, y).
+    start_radius : int
+        Distance from the center point to start sampling from.
+    max_length : int
+        Maximum sampling distance from the center point.
+    plot : bool, default=False
+        Whether to generate a plot.
+    out_file : str or Path or None, default=None
+        Output path for the plot.
+    debug : bool, default=False
+        If True, intermediate masks will be saved.
+
+    Returns
+    -------
+    intensities : np.ndarray
+        Mean intensity per radius.
+    fig : matplotlib.figure.Figure or None
+        Generated figure if ``plot=True``.
     """
+
     cx, cy = center
     half_length = max_length // 2
     img_cropped = img.crop((cx - half_length, cy - half_length, cx + half_length, cy + half_length))
@@ -873,8 +912,25 @@ def plot_pixel_intensities_from_plate(img, center, start_radius, max_length, plo
     return np.array(intensities), fig
 
 def get_rads_from_pixels(
-    pixels, thresholds=(0.2, 0.5, 0.8)
-):
+    pixels: Sequence[float],
+    thresholds: Sequence[float] = (0.2, 0.5, 0.8),
+) -> List[int]:
+    """
+    Compute radial positions corresponding to inhibition thresholds.
+
+    Parameters
+    ----------
+    pixels : sequence of float
+        Radial intensity values.
+    thresholds : sequence of float, default=(0.2, 0.5, 0.8)
+        Fractional inhibition thresholds.
+
+    Returns
+    -------
+    list of int
+        Radii indices corresponding to each threshold.
+    """
+
     pixels = np.array(pixels) # Copy to avoid modifying the original
 
     # The disk detection can be somewhat wrong and the first few pixels can be of high intesnity.
@@ -893,8 +949,33 @@ def get_rads_from_pixels(
     return result
 
 def plot_pixel_intensities(
-    intensities, rads=None, ax=None, out_file=None
-):
+    intensities: Sequence[float],
+    rads: Optional[Sequence[int]] = None,
+    ax: Optional["matplotlib.axes.Axes"] = None,
+    out_file: Optional[Union[str, Path]] = None,
+) -> Tuple[Optional["matplotlib.figure.Figure"], "matplotlib.axes.Axes"]:
+    """
+    Plot radial intensity values with optional threshold markers.
+
+    Parameters
+    ----------
+    intensities : sequence of float
+        Radial intensity values.
+    rads : sequence of int or None, default=None
+        Radii positions to annotate.
+    ax : matplotlib.axes.Axes or None, default=None
+        Existing axes to plot on.
+    out_file : str or Path or None, default=None
+        Output path to save the plot.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure or None
+        Figure object if created.
+    ax : matplotlib.axes.Axes
+        Axes containing the plot.
+    """
+
     if ax is None:
         fig, ax = plt.subplots(figsize=(8, 4))
     else:
