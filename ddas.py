@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union, Sequence
+from typing import List, Optional, Tuple, Union, Sequence, Literal
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 import numpy as np
 import cv2
@@ -12,7 +12,7 @@ def create_dda_grid(
     padding: int = 10,
     bg_color: Tuple[int, int, int] = (255, 255, 255),
     font_size: int = 20,
-    transpose: bool = False,
+    orientation: Literal['vertical', 'horizontal'] = 'vertical',
     crop: Optional[int] = None,
 ) -> None:
     """
@@ -43,8 +43,8 @@ def create_dda_grid(
         Background color in ``(R, G, B)`` format.
     font_size : int, default=20
         Font size for rendering labels.
-    transpose : bool, default=False
-        If ``True``, transpose the grid (swap rows/columns and labels).
+    orientation : {'vertical', 'horizontal'}, default='vertical'
+        Orientation of the grid.
     crop : int or None, default=None
         If provided, images are center-cropped to ``crop × crop`` pixels
         before resizing.
@@ -55,7 +55,7 @@ def create_dda_grid(
         The resulting grid image is written to ``out_file``.
     """
 
-    if transpose:
+    if orientation == 'horizontal':
         image_lists = [list(x) for x in zip(*image_lists)]
         row_labels, col_labels = col_labels, row_labels
 
