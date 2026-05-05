@@ -78,7 +78,8 @@ def process_and_save_grids(
     timepoints: List[str], 
     output_dirs: Dict[str, Path], 
     group_name: str = "all_plates",
-    slice_height: int = 400
+    slice_height: int = 40,
+    slice_width: int = 400,
 ):
     ordered_labels = []
     for img in images:
@@ -139,7 +140,7 @@ def process_and_save_grids(
                 target_path, 
                 layout=kind, 
                 orientation=orientation,
-                max_slice_width=400
+                max_slice_width=slice_width
             )
 
 def run_pipeline(args):
@@ -164,12 +165,12 @@ def run_pipeline(args):
         img.plate_id
     ))
     
-    process_and_save_grids(all_images, timepoints, dir_map, slice_height=args.slice_height)
+    process_and_save_grids(all_images, timepoints, dir_map, slice_height=args.slice_height, slice_width=args.slice_width)
     
     unique_genotypes = sorted({img.genotype for img in all_images if img.genotype})
     for genotype in unique_genotypes:
         genotype_subset = [img for img in all_images if img.genotype == genotype]
-        process_and_save_grids(genotype_subset, timepoints, dir_map, group_name=f"genotype_{genotype}", slice_height=args.slice_height)
+        process_and_save_grids(genotype_subset, timepoints, dir_map, group_name=f"genotype_{genotype}", slice_height=args.slice_height, slice_width=args.slice_width)
 
 @Gooey(
     program_name="DDA Grid Creator",
@@ -213,8 +214,15 @@ def main():
     meta_group.add_argument(
         "--slice-height",
         type=int,
+        default=40,
+        help="Slice height in pixels - recommended to be the diameter of the disk.",
+    )
+
+    meta_group.add_argument(
+        "--slice-width",
+        type=int,
         default=400,
-        help="Slice height in pixels",
+        help="Slice width in pixels - the distance from the center of the disk to the edge of the plate you want to be displayed.",
     )
     
     args = parser.parse_args()
