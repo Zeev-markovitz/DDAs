@@ -174,7 +174,7 @@ def run_pipeline(args):
 
 @Gooey(
     program_name="DDA Grid Creator",
-    default_size=(600, 720),
+    default_size=(700, 720),
 )
 def main():
     parser = GooeyParser(description="Generate image grids and comparisons for DDAs.")
@@ -184,45 +184,58 @@ def main():
         "input_folders",
         nargs='+',
         widget="MultiDirChooser",
-        help="Input folders (two or three). When providing them manually, separate them using a colon (':')."
+        metavar="Input folders",
+        help="Input folders (two or three, corresponding to 24, 48 and potentially 72 hours)."\
+        " When providing them manually, separate them using a colon (':')."
     )
     
     io_group.add_argument(
         "output_folder",
-        widget="DirChooser"
+        widget="DirChooser",
+        metavar="Output folder",
     )
     
-    meta_group = parser.add_argument_group("Metadata Options")
+    meta_group = parser.add_argument_group("Metadata")
     meta_group.add_argument(
         "--excel",
         widget="FileChooser",
-        help="Excel file with Plate number, Label, and Genotype"
+        metavar="Excel with metadata (optional)",
+        help="Excel with plate metadata. Three columns are possible: \n"+\
+        "1) 'Plate number'\n"+\
+        "2) 'Label' (optional, used to label each plate)\n"+\
+        "3) 'Genotype' (optional, used for creating grouped panels and will be used as the label if no 'Label' column is provided)"
     )
     
     meta_group.add_argument(
         "--sheet",
         default="Sheet1",
+        metavar="Sheet name",
         help="Sheet name in the Excel file"
     )
     
     meta_group.add_argument(
         "--order",
         default="",
+        metavar="Sort order (optional)",
         help="Comma-separated list of Genotypes to define sort order"
     )
 
-    meta_group.add_argument(
+    visualization_group = parser.add_argument_group("Visualization")
+    visualization_group.add_argument(
         "--slice-height",
         type=int,
         default=40,
-        help="Slice height in pixels - recommended to be the diameter of the disk.",
+        metavar="Disk diameter",
+        help="Slice height in pixels - should be approximately the diameter of the disk.",
     )
 
-    meta_group.add_argument(
+    visualization_group.add_argument(
         "--slice-width",
         type=int,
         default=400,
-        help="Slice width in pixels - the distance from the center of the disk to the edge of the plate you want to be displayed.",
+        metavar="Distance from the disk to the edge of the plate",
+        help="Slice width in pixels - the distance from the center of the disk to the edge of the plate you want to be displayed" +\
+            " (doesn't have to be the whole plate).",
     )
     
     args = parser.parse_args()
