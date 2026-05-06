@@ -94,8 +94,8 @@ def process_and_save_grids(
     for tp in timepoints:
         row = [
             next((str(img.file_path) for img in images 
-                  if img.timepoint_label == tp and img.display_name == lbl), None) 
-            for lbl in ordered_labels
+                  if img.timepoint_label == tp and img.plate_id == pid), None)
+            for pid in unique_ids
         ]
         image_grid_paths.append(row)
 
