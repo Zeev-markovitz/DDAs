@@ -81,10 +81,14 @@ def process_and_save_grids(
     slice_height: int = 40,
     slice_width: int = 400,
 ):
-    ordered_labels = []
-    for img in images:
-        if img.display_name not in ordered_labels:
-            ordered_labels.append(img.display_name)
+    unique_ids = sorted({img.plate_id for img in images})
+
+    id_to_label = {}
+    for pid in unique_ids:
+        representative_img = next(img for img in images if img.plate_id == pid)
+        id_to_label[pid] = representative_img.display_name
+
+    ordered_labels = [id_to_label[pid] for pid in unique_ids]
     
     image_grid_paths = []
     for tp in timepoints:
@@ -110,8 +114,6 @@ def process_and_save_grids(
         output_dirs["grid_horizontal"] / f"{group_name}.jpg",
         orientation='horizontal'
     )
-    
-    unique_ids = sorted({img.plate_id for img in images})
     
     for tp_start, tp_end in itertools.combinations(timepoints, 2):
         start_paths, end_paths, active_labels = [], [], []
